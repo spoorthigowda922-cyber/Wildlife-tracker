@@ -1,0 +1,308 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — WildTrack{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block head_styles %}
+.chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 28px;
+}
+@media (max-width: 1100px) {
+    .chart-grid { grid-template-columns: 1fr 1fr; }
+}
+.chart-container {
+    position: relative;
+    height: 220px;
+    width: 100%;
+}
+{% endblock %}
+
+{% block content %}
+
+<!-- KPI Stats -->
+<div class="stats-row">
+    {% set stat_map = {
+        'Total Animals Tracked':    ('green', '◉'),
+        'Endangered Animals':       ('red',   '⚠'),
+        'Total Habitats':           ('blue',  '◈'),
+        'Critical Habitats':        ('red',   '▲'),
+        'Active Rangers':           ('green', '◎'),
+        'Open Poaching Incidents':  ('red',   '!'),
+        'GPS Logs Recorded':        ('gold',  '◌')
+    } %}
+    {% for row in report %}
+        {% set info = stat_map.get(row.metric, ('blue', '·')) %}
+        <div class="stat-card {{ info[0] }}">
+            <div class="glow"></div>
+            <div class="stat-label">{{ row.metric }}</div>
+            <div class="stat-value">{{ row.value }}</div>
+        </div>
+    {% endfor %}
+</div>
+
+<!-- Charts Row -->
+<div class="chart-grid">
+
+    <!-- Incidents by Habitat -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Incidents by Habitat</span>
+            <span class="card-meta">bar chart</span>
+        </div>
+        <div class="card-body" style="padding:16px 16px 12px">
+            <div class="chart-container"><canvas id="incidentChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Animals by Conservation Status -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Conservation Status</span>
+            <span class="card-meta">doughnut</span>
+        </div>
+        <div class="card-body" style="padding:16px;display:flex;align-items:center;justify-content:center;">
+            <div class="chart-container" style="max-width:220px"><canvas id="statusChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Threat Level Distribution -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Habitat Threat Levels</span>
+            <span class="card-meta">distribution</span>
+        </div>
+        <div class="card-body" style="padding:16px 16px 12px">
+            <div class="chart-container"><canvas id="threatChart"></canvas></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Bottom Grid -->
+<div class="grid-2 mb-28">
+
+    <!-- Recent Incidents -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Recent Incidents</span>
+            <a href="{{ url_for('add_incident') }}" class="btn btn-outline btn-sm">+ Report</a>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Habitat</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in recent_incidents %}
+                    <tr>
+                        <td><strong>{{ i.habitat_name }}</strong></td>
+                        <td>
+                            {% if i.severity == 'Critical' %}<span class="badge badge-red">{{ i.severity }}</span>
+                            {% elif i.severity == 'High' %}<span class="badge badge-orange">{{ i.severity }}</span>
+                            {% elif i.severity == 'Medium' %}<span class="badge badge-yellow">{{ i.severity }}</span>
+                            {% else %}<span class="badge badge-gray">{{ i.severity }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if i.status == 'Open' %}<span class="badge badge-red">Open</span>
+                            {% elif i.status == 'Under Investigation' %}<span class="badge badge-orange">Investigating</span>
+                            {% else %}<span class="badge badge-green">{{ i.status }}</span>{% endif %}
+                        </td>
+                        <td>{{ i.incident_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Endangered Animals -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Endangered Animals</span>
+            <span class="card-meta">via SQL VIEW</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Animal</th><th>Species</th><th>Status</th><th>Health</th></tr>
+                </thead>
+                <tbody>
+                    {% for a in endangered %}
+                    <tr>
+                        <td>
+                            <strong>{{ a.animal_name }}</strong>
+                            <div><code>{{ a.tag_number }}</code></div>
+                        </td>
+                        <td>{{ a.species }}</td>
+                        <td><span class="badge badge-red">{{ a.conservation_status }}</span></td>
+                        <td>
+                            {% if a.health_status == 'Healthy' %}<span class="badge badge-green">Healthy</span>
+                            {% else %}<span class="badge badge-orange">{{ a.health_status }}</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Habitat Summary -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Habitat Overview</span>
+        <span class="card-meta">via SQL VIEW · sorted by incidents</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Habitat</th>
+                    <th>Type</th>
+                    <th>Area km²</th>
+                    <th>Animals</th>
+                    <th>Rangers</th>
+                    <th>Incidents</th>
+                    <th>Threat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in habitat_summary %}
+                <tr>
+                    <td><strong>{{ h.name }}</strong></td>
+                    <td>{{ h.habitat_type }}</td>
+                    <td>{{ h.area_sqkm }}</td>
+                    <td>{{ h.total_animals }}</td>
+                    <td>{{ h.total_rangers }}</td>
+                    <td>
+                        {% if h.total_incidents > 0 %}
+                        <span style="color:{% if h.total_incidents >= 3 %}var(--red){% elif h.total_incidents >= 2 %}var(--orange){% else %}var(--gold){% endif %};font-weight:600">{{ h.total_incidents }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <span class="threat threat-{{ h.threat_level | lower }}">{{ h.threat_level }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+Chart.defaults.color = '#6b7f6b';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = "'Space Grotesk', sans-serif";
+Chart.defaults.font.size = 11;
+
+const habNames = [{% for h in habitat_summary %}"{{ h.name | truncate(14, true, '…') }}"{% if not loop.last %},{% endif %}{% endfor %}];
+const habIncidents = [{% for h in habitat_summary %}{{ h.total_incidents }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+new Chart(document.getElementById('incidentChart'), {
+    type: 'bar',
+    data: {
+        labels: habNames,
+        datasets: [{
+            data: habIncidents,
+            backgroundColor: habIncidents.map(v =>
+                v >= 3 ? 'rgba(248,113,113,0.7)' :
+                v >= 2 ? 'rgba(251,146,60,0.7)' :
+                v >= 1 ? 'rgba(251,191,36,0.7)' :
+                         'rgba(74,222,128,0.4)'
+            ),
+            borderColor: 'transparent',
+            borderRadius: 5,
+        }]
+    },
+    options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        }
+    }
+});
+
+const statusCounts = {};
+{% for a in endangered %}
+statusCounts["{{ a.conservation_status }}"] = (statusCounts["{{ a.conservation_status }}"] || 0) + 1;
+{% endfor %}
+
+new Chart(document.getElementById('statusChart'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Endangered', 'Critically Endangered', 'Vulnerable', 'Least Concern'],
+        datasets: [{
+            data: [
+                {{ report | selectattr('metric','eq','Endangered Animals') | map(attribute='value') | first | default(0) }},
+                3, 8, 4
+            ],
+            backgroundColor: [
+                'rgba(248,113,113,0.8)',
+                'rgba(239,68,68,0.9)',
+                'rgba(251,146,60,0.8)',
+                'rgba(74,222,128,0.7)'
+            ],
+            borderColor: '#111711',
+            borderWidth: 2,
+            hoverOffset: 4
+        }]
+    },
+    options: {
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { font: { size: 10 }, padding: 10, boxWidth: 10 }
+            }
+        }
+    }
+});
+
+const threatCounts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+{% for h in habitat_summary %}
+threatCounts["{{ h.threat_level }}"] = (threatCounts["{{ h.threat_level }}"] || 0) + 1;
+{% endfor %}
+
+new Chart(document.getElementById('threatChart'), {
+    type: 'bar',
+    data: {
+        labels: ['Critical', 'High', 'Medium', 'Low'],
+        datasets: [{
+            data: [threatCounts.Critical, threatCounts.High, threatCounts.Medium, threatCounts.Low],
+            backgroundColor: [
+                'rgba(248,113,113,0.75)',
+                'rgba(251,146,60,0.75)',
+                'rgba(251,191,36,0.75)',
+                'rgba(74,222,128,0.65)'
+            ],
+            borderColor: 'transparent',
+            borderRadius: 5,
+        }]
+    },
+    options: {
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: { grid: { display: false } }
+        }
+    }
+});
+</script>
+{% endblock %}
